@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    /* Versão do JavaScript de saída */
+    "target": "es2020",
+
+    /* Sistema de Módulos (essencial para Node.js tradicional) */
+    "module": "commonjs",
+
+    /* Localização dos arquivos */
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    /* Interoperabilidade de Módulos (resolve a maioria dos problemas de import) */
+    "esModuleInterop": true,
+
+    /* Checagem de Tipos Estrita */
+    "strict": true,
+
+    /* Outras Opções Importantes */
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"] // Garante que apenas a pasta src seja compilada
+}

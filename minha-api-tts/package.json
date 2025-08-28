@@ -1,0 +1,27 @@
+{
+  "name": "minha-api-tts",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@google/genai": "^1.16.0",
+    "@google/generative-ai": "^0.24.1",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "mime": "^4.0.7"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/mime": "^3.0.4",
+    "@types/node": "^20.14.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
