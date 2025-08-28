@@ -2,11 +2,15 @@ import express, { type Request, type Response } from 'express';
 import * as dotenv from 'dotenv';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import mime from 'mime';
+import cors from 'cors';
 
 dotenv.config();
 
 const app = express();
+
+app.use(cors());
 app.use(express.json());
+
 const port = process.env.PORT || 8080;
 
 interface WavConversionOptions {
@@ -70,84 +74,106 @@ function convertToWav(rawData: string, mimeType: string) {
     return Buffer.concat([header, rawBuffer]);
 }
 
-async function generateAudioStream(textToSpeak: string): Promise<Buffer> {
+async function generateAudio(textToSpeak: string, voiceName: string): Promise<Buffer> {
     const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-    
-    // CORREÇÃO APLICADA AQUI
     const config = {
         temperature: 1,
-        responseModalities: [
-            'audio',
-        ],
-    };
-
-    const model = 'gemini-2.5-pro-preview-tts';
-    const contents = [
-        {
-            role: 'user',
-            parts: [
-                { text: textToSpeak },
-            ],
+        responseModalities: [ 'audio' ],
+        speechConfig: {
+            voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: voiceName },
+            },
         },
-    ];
-
+    };
+    const model = 'gemini-2.5-pro-preview-tts';
+    const contents = [{ role: 'user', parts: [{ text: textToSpeak }] }];
     const generativeModel = ai.getGenerativeModel({ model });
-    const responseStream = await generativeModel.generateContentStream({
-        contents,
-        generationConfig: config,
-    });
-
+    const responseStream = await generativeModel.generateContentStream({ contents, generationConfig: config });
+    
     const audioChunks: Buffer[] = [];
     let audioMimeType = '';
-
     for await (const chunk of responseStream.stream) {
         if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
             const inlineData = chunk.candidates[0].content.parts[0].inlineData;
-            if (!audioMimeType && inlineData.mimeType) {
-                audioMimeType = inlineData.mimeType;
-            }
-            const audioChunkBuffer = Buffer.from(inlineData.data, 'base64');
-            audioChunks.push(audioChunkBuffer);
+            if (!audioMimeType) audioMimeType = inlineData.mimeType;
+            audioChunks.push(Buffer.from(inlineData.data, 'base64'));
         }
     }
-
-    if (audioChunks.length === 0) {
-        throw new Error("Nenhum dado de áudio foi recebido da API do Gemini.");
-    }
-    
-    const combinedBuffer = Buffer.concat(audioChunks);
-    const combinedBase64 = combinedBuffer.toString('base64');
-    
-    const finalWavBuffer = convertToWav(combinedBase64, audioMimeType);
-
-    return finalWavBuffer;
+    if (audioChunks.length === 0) throw new Error("Nenhum áudio recebido.");
+    return convertToWav(Buffer.concat(audioChunks).toString('base64'), audioMimeType);
 }
 
-app.post('/generate-audio', async (req: Request, res: Response) => {
-    const { text } = req.body;
+// NOVA FUNÇÃO PARA GERAR PODCAST
+async function generatePodcast(dialogue: string, voiceName1: string, voiceName2: string): Promise<Buffer> {
+    const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+    const config = {
+        temperature: 1,
+        responseModalities: [ 'audio' ],
+        speechConfig: {
+            multiSpeakerVoiceConfig: {
+                speakerVoiceConfigs: [
+                    { speaker: 'Speaker 1', voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName1 } } },
+                    { speaker: 'Speaker 2', voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName2 } } },
+                ]
+            },
+        },
+    };
+    const model = 'gemini-2.5-pro-preview-tts';
+    const contents = [{ role: 'user', parts: [{ text: dialogue }] }];
+    const generativeModel = ai.getGenerativeModel({ model });
+    const responseStream = await generativeModel.generateContentStream({ contents, generationConfig: config });
 
-    if (!text) {
-        return res.status(400).send({ error: 'O campo "text" é obrigatório no corpo da requisição.' });
+    const audioChunks: Buffer[] = [];
+    let audioMimeType = '';
+    for await (const chunk of responseStream.stream) {
+        if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
+            const inlineData = chunk.candidates[0].content.parts[0].inlineData;
+            if (!audioMimeType) audioMimeType = inlineData.mimeType;
+            audioChunks.push(Buffer.from(inlineData.data, 'base64'));
+        }
     }
+    if (audioChunks.length === 0) throw new Error("Nenhum áudio recebido.");
+    return convertToWav(Buffer.concat(audioChunks).toString('base64'), audioMimeType);
+}
+
+
+app.post('/generate-audio', async (req: Request, res: Response) => {
+    const { text, voice } = req.body;
+    if (!text) return res.status(400).send({ error: 'O campo "text" é obrigatório.' });
+    
+    const voiceName = voice || 'Zephyr';
+    console.log(`Gerando áudio para: "${text}" com a voz: "${voiceName}"`);
 
     try {
-        console.log(`Gerando áudio para o texto: "${text}"`);
-        const audioBuffer = await generateAudioStream(text);
-
-        res.setHeader('Content-Type', 'audio/wav');
-        res.setHeader('Content-Disposition', 'attachment; filename=audio.wav');
-        
-        res.send(audioBuffer);
+        const audioBuffer = await generateAudio(text, voiceName);
+        res.setHeader('Content-Type', 'audio/wav').send(audioBuffer);
         console.log('Áudio enviado com sucesso!');
-
     } catch (error) {
         console.error('Erro ao gerar áudio:', error);
         res.status(500).send({ error: 'Falha ao gerar o áudio.' });
     }
 });
 
+// NOVO ENDPOINT PARA PODCAST
+app.post('/generate-podcast', async (req: Request, res: Response) => {
+    const { text, voice1, voice2 } = req.body;
+    if (!text || !voice1 || !voice2) {
+        return res.status(400).send({ error: 'Os campos "text", "voice1" e "voice2" são obrigatórios.' });
+    }
+
+    console.log(`Gerando podcast para: "${text}" com as vozes: "${voice1}" e "${voice2}"`);
+    try {
+        const audioBuffer = await generatePodcast(text, voice1, voice2);
+        res.setHeader('Content-Type', 'audio/wav').send(audioBuffer);
+        console.log('Podcast enviado com sucesso!');
+    } catch (error) {
+        console.error('Erro ao gerar podcast:', error);
+        res.status(500).send({ error: 'Falha ao gerar o podcast.' });
+    }
+});
+
 app.get('/', (req: Request, res: Response) => {
-    res.send('API de Text-to-Speech está no ar! Use o endpoint POST /generate-audio.');
+    res.send('API está no ar!');
 });
 
 app.listen(port, () => {
