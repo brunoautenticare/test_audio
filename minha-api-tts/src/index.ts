@@ -8,7 +8,22 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+  'https://autenticarewebsite.web.app',
+  'https://autenticarewebsite.firebaseapp.com'
+];
+
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  }
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 const port = process.env.PORT || 8080;
@@ -103,7 +118,6 @@ async function generateAudio(textToSpeak: string, voiceName: string): Promise<Bu
     return convertToWav(Buffer.concat(audioChunks).toString('base64'), audioMimeType);
 }
 
-// NOVA FUNÇÃO PARA GERAR PODCAST
 async function generatePodcast(dialogue: string, voiceName1: string, voiceName2: string): Promise<Buffer> {
     const ai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
     const config = {
@@ -154,7 +168,6 @@ app.post('/generate-audio', async (req: Request, res: Response) => {
     }
 });
 
-// NOVO ENDPOINT PARA PODCAST
 app.post('/generate-podcast', async (req: Request, res: Response) => {
     const { text, voice1, voice2 } = req.body;
     if (!text || !voice1 || !voice2) {
